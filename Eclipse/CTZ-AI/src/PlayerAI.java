@@ -8,11 +8,28 @@ import com.orbischallenge.ctz.objects.FriendlyUnit;
 import com.orbischallenge.ctz.objects.Pickup;
 import com.orbischallenge.ctz.objects.UnitClient;
 import com.orbischallenge.ctz.objects.World;
+import com.orbischallenge.ctz.objects.enums.UnitCallSign;
 import com.orbischallenge.ctz.objects.enums.WeaponType;
 import com.orbischallenge.game.engine.Point;
 
-
 public class PlayerAI {
+	
+	private static class Objective {
+		
+		public Objective(Type t, Point p) {
+			type = t;
+			location = p;
+		}
+
+		enum Type {
+			PICKUP, CAPTURE, SHOOT;
+		}
+		
+		Type type;
+		Point location;
+		UnitCallSign target;
+	}
+
 	final static double DANGER_VAL = 10.0;
 	final static double CAUTION_VAL = 5.0;
 
