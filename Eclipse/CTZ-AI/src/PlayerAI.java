@@ -12,6 +12,8 @@ import com.orbischallenge.game.engine.Point;
 
 
 public class PlayerAI {
+	final static double DANGER_VAL = 10.0;
+	final static double CAUTION_VAL = 5.0;
 
 	public static final int MAX_NUM_TEAM_MEMBERS = 4;
 
@@ -43,11 +45,10 @@ public class PlayerAI {
     
     // Return a safety value of the provided square/point
     // Lower the value the better.
-    // Lowest value returned is 0.0
-    public static double getSquareSafety(Point point, EnemyUnit[] enemyUnits, World world) {
-    	final double DANGER_VAL = 10.0;
-    	final double CAUTION_VAL = 5.0;
-    	
+    // Lowest value returned is 0.0 -> Safe
+    // CAUTION_VAL returned -> Enemy can move to a square to be in line of sight in one turn
+    // DANGER_VAL returned -> Currently in enemy's line of sight
+    static double getSquareSafety(Point point, EnemyUnit[] enemyUnits, World world) {
     	double safety = 0.0;
     	
     	for (EnemyUnit unit : enemyUnits) {
