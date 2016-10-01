@@ -1,0 +1,11 @@
+*.zip
+*.jar
+Eclipse/.recommenders/**
+*.class
+*.pyc
+Eclipse/CTZ-AI/Cyber Team Zero/Manual/**
+*.nac
+**/_lastconfig.json
+**/PythonClientAPI
+**/Resources/**/*.png
+**/Resources/**/*.ttf
