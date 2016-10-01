@@ -10,7 +10,10 @@ import com.orbischallenge.ctz.objects.World;
 import com.orbischallenge.ctz.objects.enums.WeaponType;
 import com.orbischallenge.game.engine.Point;
 
+
 public class PlayerAI {
+
+	public static final int MAX_NUM_TEAM_MEMBERS = 4;
 
     public PlayerAI() {
 		//Any initialization code goes here.
@@ -50,14 +53,14 @@ public class PlayerAI {
     	for (EnemyUnit unit : enemyUnits) {
     		WeaponType weapon = unit.getCurrentWeapon();
     		int range = weapon.getRange();
-    		
-    		Point position = unit.getPosition();
-    		
-    		boolean in_range = world.canShooterShootTarget(position, point, range);
-    		
-    		if (in_range) {
-    			safety = Math.max(safety, DANGER_VAL);
-    			break;
+			
+			Point position = unit.getPosition();
+			
+			boolean in_range = world.canShooterShootTarget(position, point, range);
+			
+			if (in_range) {
+				safety = Math.max(safety, DANGER_VAL);
+				break;
     		}
     		else {
     			if (safety < CAUTION_VAL) {
@@ -106,7 +109,7 @@ public class PlayerAI {
     }
     
     static Pickup[] getClosestPickups(World world, UnitClient[] units) {
-    	Pickup[][] pickup_targets = new Pickup[4][2];
+    	Pickup[][] pickup_targets = new Pickup[MAX_NUM_TEAM_MEMBERS][2]; // index 0 is primary, 1 is secondary
 
 		for (int iunit = 0; iunit < units.length; ++iunit) {
 			UnitClient u = units[iunit];
@@ -134,24 +137,32 @@ public class PlayerAI {
 		HashMap<Pickup,Integer> num_want_primary = new HashMap<>();
 		for (int i = 0; i < pickup_targets.length; ++i) {
 			Pickup this_pickup = pickup_targets[i][0];
-			num_want_primary.put(this_pickup, num_want_primary.getOrDefault(this_pickup, 0) + 1); // ++ count of preferred item
-			System.out.println(num_want_primary.get(this_pickup));
+			Integer old_value = num_want_primary.get(this_pickup);
+			if (old_value == null) {
+				old_value = 0;
+			}
+			num_want_primary.put(this_pickup, old_value + 1);
 		}
 
-		Pickup[] final_targets = new Pickup[4];
+		Pickup[] final_targets = new Pickup[MAX_NUM_TEAM_MEMBERS];
 		HashSet<Pickup> used = new HashSet<>();
 		for (int iunit = 0; iunit < units.length; ++iunit) {
 			Pickup my_primary = pickup_targets[iunit][0];
-			Pickup my_secondary = pickup_targets[iunit][1];
 			int num_want_my_primary = num_want_primary.get(my_primary);
 			if (num_want_my_primary == 1) {
-				final_targets[iunit] = pickup_targets[iunit][0];
-			} else if (!used.contains(my_primary)) {
-//				if (used.contains(my_secondary)) {
-					final_targets[iunit] = null;
-//				} else {
-//					final_targets[iunit] = my_secondary;
-//				}
+				final_targets[iunit] = my_primary;
+			} else {
+				final_targets[iunit] = null;
+			}
+		}
+		
+		for (int iunit = 0; iunit < units.length; ++iunit) {
+			if (final_targets[iunit] != null) { continue; } // skip those with targets already
+			Pickup my_secondary = pickup_targets[iunit][1];
+			if (used.contains(my_secondary)) {
+				final_targets[iunit] = null;
+			} else {
+				final_targets[iunit] = my_secondary;
 			}
 		}
 
