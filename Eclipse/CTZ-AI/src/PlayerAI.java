@@ -1,6 +1,7 @@
 import java.util.HashMap;
 import java.util.HashSet;
 
+import com.orbischallenge.ctz.objects.ControlPoint;
 import com.orbischallenge.ctz.Constants;
 import com.orbischallenge.ctz.objects.EnemyUnit;
 import com.orbischallenge.ctz.objects.FriendlyUnit;
@@ -29,12 +30,13 @@ public class PlayerAI {
 	 * @param friendlyUnits An array of all 4 units on your team. Their order won't change.
 	 */
     public void doMove(World world, EnemyUnit[] enemy_units, FriendlyUnit[] friendly_units) {
-		Pickup[] pickup_targets = getClosestPickups(world, friendly_units);
+		Integer[] pickup_indexes = assignOnePointToEach(getLocationsOf(world.getPickups()), friendly_units, world);
 		for (int iunit = 0; iunit < friendly_units.length; ++iunit) {
 			FriendlyUnit me = friendly_units[iunit];
-			Pickup p = pickup_targets[iunit];
-			if (p == null) { continue; }
+			Integer pickup_index = pickup_indexes[iunit];
+			if (pickup_index == null) { continue; }
 
+			Pickup p = world.getPickups()[pickup_index];
 			if (p.getPosition().equals(me.getPosition())) {
 				me.pickupItemAtPosition();
 			} else {
@@ -109,35 +111,34 @@ public class PlayerAI {
     	return unit.getCurrentWeapon() != WeaponType.MINI_BLASTER;
     }
     
-    static Pickup[] getClosestPickups(World world, UnitClient[] units) {
-    	Pickup[][] pickup_targets = new Pickup[MAX_NUM_TEAM_MEMBERS][2]; // index 0 is primary, 1 is secondary
+    static Integer[] assignOnePointToEach(Point[] points, UnitClient[] units, World world) {
+    	Integer[][] pickup_targets = new Integer[MAX_NUM_TEAM_MEMBERS][2]; // index 0 is primary, 1 is secondary
 
 		for (int iunit = 0; iunit < units.length; ++iunit) {
 			UnitClient u = units[iunit];
 			int closest_len = Integer.MAX_VALUE;	
 			int second_closest_len = Integer.MAX_VALUE;
 
-			for (Pickup p : world.getPickups()) {
-				Point pickup_location = p.getPosition();
-				int len = world.getPathLength(u.getPosition(), pickup_location);
+			for (int ipoint = 0; ipoint < points.length; ++ipoint) {
+				int len = world.getPathLength(u.getPosition(), points[ipoint]);
 				if (closest_len > len) {
 					second_closest_len = closest_len;
 					pickup_targets[iunit][1] = pickup_targets[iunit][0];
 					closest_len = len;
-					pickup_targets[iunit][0] = p;
+					pickup_targets[iunit][0] = ipoint;
 				} else {
 					if (second_closest_len > len) {
 						second_closest_len = len;
-						pickup_targets[iunit][1] = p;
+						pickup_targets[iunit][1] = ipoint;
 					}
 				}
 			}
 		}
 		
 		
-		HashMap<Pickup,Integer> num_want_primary = new HashMap<>();
+		HashMap<Integer,Integer> num_want_primary = new HashMap<>();
 		for (int i = 0; i < pickup_targets.length; ++i) {
-			Pickup this_pickup = pickup_targets[i][0];
+			Integer this_pickup = pickup_targets[i][0];
 			Integer old_value = num_want_primary.get(this_pickup);
 			if (old_value == null) {
 				old_value = 0;
@@ -145,10 +146,10 @@ public class PlayerAI {
 			num_want_primary.put(this_pickup, old_value + 1);
 		}
 
-		Pickup[] final_targets = new Pickup[MAX_NUM_TEAM_MEMBERS];
-		HashSet<Pickup> used = new HashSet<>();
+		Integer[] final_targets = new Integer[MAX_NUM_TEAM_MEMBERS];
+		HashSet<Point> used = new HashSet<>();
 		for (int iunit = 0; iunit < units.length; ++iunit) {
-			Pickup my_primary = pickup_targets[iunit][0];
+			Integer my_primary = pickup_targets[iunit][0];
 			int num_want_my_primary = num_want_primary.get(my_primary);
 			if (num_want_my_primary == 1) {
 				final_targets[iunit] = my_primary;
@@ -159,7 +160,7 @@ public class PlayerAI {
 		
 		for (int iunit = 0; iunit < units.length; ++iunit) {
 			if (final_targets[iunit] != null) { continue; } // skip those with targets already
-			Pickup my_secondary = pickup_targets[iunit][1];
+			Integer my_secondary = pickup_targets[iunit][1];
 			if (used.contains(my_secondary)) {
 				final_targets[iunit] = null;
 			} else {
@@ -168,5 +169,21 @@ public class PlayerAI {
 		}
 
 		return final_targets;
+    }
+    
+    public static Point[] getLocationsOf(Pickup[] pickups) {
+    	Point[] result = new Point[pickups.length];
+    	for (int i = 0; i < pickups.length; ++i) {
+    		result[i] = pickups[i].getPosition();
+    	}
+    	return result;
+    }
+    
+    public static Point[] getLocationsOf(ControlPoint[] cpoints) {
+    	Point[] result = new Point[cpoints.length];
+    	for (int i = 0; i < cpoints.length; ++i) {
+    		result[i] = cpoints[i].getPosition();
+    	}
+    	return result;
     }
 }
