@@ -1,5 +1,6 @@
 *.zip
 **/Bots/**/*.jar
+Eclipse/.metadata/.plugins/**
 **/Bots/**/*.class
 *.pyc
 Eclipse/CTZ-AI/Cyber Team Zero/Manual/**
