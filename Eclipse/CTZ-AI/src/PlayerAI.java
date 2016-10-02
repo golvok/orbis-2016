@@ -365,7 +365,9 @@ public class PlayerAI {
 				// add to total
 				total_distance += getPathLengthWrapper(world, units[iunit].getPosition(), points[point_index]);
 			}
-			if (use_conflict || num_nopickups > (units.length - points.length)) {
+
+			int allowable_nopickups = Math.max(units.length - points.length,0);
+			if (use_conflict || (num_nopickups > allowable_nopickups)) {
 				continue;
 			}
 
