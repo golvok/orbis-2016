@@ -5,6 +5,7 @@ Eclipse/.recommenders
 **/Bots/**/*.class
 *.pyc
 Eclipse/CTZ-AI/Cyber Team Zero/Manual/**
+Eclipse/CTZ-AI/Cyber Team Zero/Results/*.json
 Eclipse/CTZ-AI/src/**/*.class
 Eclipse/CTZ-AI/bin/*.class
 *.nac
