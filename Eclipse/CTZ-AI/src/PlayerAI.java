@@ -119,9 +119,9 @@ public class PlayerAI {
 	// state vars
 	ObjectiveSet last_objectives = new ObjectiveSet();
 
-    public PlayerAI() {
+	public PlayerAI() {
 		//Any initialization code goes here.
-    }
+	}
 
 	/**
 	 * This method will get called every turn.
@@ -130,7 +130,7 @@ public class PlayerAI {
 	 * @param enemyUnits An array of all 4 units on the enemy team. Their order won't change.
 	 * @param friendlyUnits An array of all 4 units on your team. Their order won't change.
 	 */
-    public void doMove(World world, EnemyUnit[] may_be_dead_enemy_units, FriendlyUnit[] may_be_dead_friendly_units) {
+	public void doMove(World world, EnemyUnit[] may_be_dead_enemy_units, FriendlyUnit[] may_be_dead_friendly_units) {
 		final Pickup[] all_pickups = world.getPickups();
 		final FriendlyUnit[] friendly_units = getAliveUnits(may_be_dead_friendly_units).toArray(new FriendlyUnit[0]);
 		final EnemyUnit[] enemy_units = getAliveUnits(may_be_dead_enemy_units).toArray(new EnemyUnit[0]);
@@ -185,21 +185,21 @@ public class PlayerAI {
 			}
 		}
 
-    	/* if (ATTACK_MODE) */ {
+		/* if (ATTACK_MODE) */ {
 			for (FriendlyUnit me : friendly_units) {
 				for (EnemyUnit enemy : enemy_units) {
 					objectives_this_turn = canShootDoShoot(me, enemy, world, objectives_this_turn);
 					// TODO do something more intelligent that isn't order dependent...
 				}
 			}
-    	}
+		}
 
-    	for (FriendlyUnit me : friendly_units) {
-    		if (objectives_this_turn.getObjective(me).isNone()) {
-    			// if nothing to do, kill, kill, kill!
-    			Point[] enemy_locations = getLocationsOf(enemy_units);
-    			Integer closest_index = closestPointDjkstra(me.getPosition(), enemy_locations, world);
-    			if (closest_index != null) {
+		for (FriendlyUnit me : friendly_units) {
+			if (objectives_this_turn.getObjective(me).isNone()) {
+				// if nothing to do, kill, kill, kill!
+				Point[] enemy_locations = getLocationsOf(enemy_units);
+				Integer closest_index = closestPointDjkstra(me.getPosition(), enemy_locations, world);
+				if (closest_index != null) {
 					EnemyUnit target = enemy_units[closest_index];
 					objectives_this_turn = canShootDoShoot(me, target, world, objectives_this_turn);
 					if (objectives_this_turn.getObjective(me).isNone() == true) {
@@ -207,36 +207,36 @@ public class PlayerAI {
 						// TODO move in line-of-sight, taking into account weapon ranges.
 						objectives_this_turn = moveMeAndSetObjective(me, target.getPosition(), Objective.makeShootObjective(target), objectives_this_turn);
 					}
-    			}
-    		}
-    	}
+				}
+			}
+		}
 
-    	// TODO check here if shoot objective is same as last time, and we wanted to move, and we didn't move
-    	// it's either a 2 bots trying to got the same square or a bot is in the way. Either case, renegotiate.
+		// TODO check here if shoot objective is same as last time, and we wanted to move, and we didn't move
+		// it's either a 2 bots trying to got the same square or a bot is in the way. Either case, renegotiate.
 
-    	// TODO resolve team blocking by having storing all requests to move, and arbitrating here (ie. right at the end)
+		// TODO resolve team blocking by having storing all requests to move, and arbitrating here (ie. right at the end)
 
-    	// will print, if DEBUG_PRINTS is true, and should be guaranteed to not do so by the "kill, kill, kill" block
-    	// other reasons you might not move:
-    	//     another robot is in the way (if this mutually happens in a corridor... nothing happens sometimes...)
-    	//     another robot (might be on your team!) tried to move to the same place
-    	checkForNoneObjectives(objectives_this_turn, friendly_units);
+		// will print, if DEBUG_PRINTS is true, and should be guaranteed to not do so by the "kill, kill, kill" block
+		// other reasons you might not move:
+		//     another robot is in the way (if this mutually happens in a corridor... nothing happens sometimes...)
+		//     another robot (might be on your team!) tried to move to the same place
+		checkForNoneObjectives(objectives_this_turn, friendly_units);
 
-    	// done making moves - save new objectives as the last ones
-    	last_objectives = objectives_this_turn;
-    }
+		// done making moves - save new objectives as the last ones
+		last_objectives = objectives_this_turn;
+	}
 
-    // Return a safety value of the provided square/point
-    // Lower the value the better.
-    // Lowest value returned is 0.0 -> Safe
-    // CAUTION_VAL returned -> Enemy can move to a square to be in line of sight in one turn
-    // DANGER_VAL returned -> Currently in enemy's line of sight
-    static double getSquareSafety(Point point, EnemyUnit[] enemyUnits, World world) {
-    	double safety = 0.0;
+	// Return a safety value of the provided square/point
+	// Lower the value the better.
+	// Lowest value returned is 0.0 -> Safe
+	// CAUTION_VAL returned -> Enemy can move to a square to be in line of sight in one turn
+	// DANGER_VAL returned -> Currently in enemy's line of sight
+	static double getSquareSafety(Point point, EnemyUnit[] enemyUnits, World world) {
+		double safety = 0.0;
 
-    	for (EnemyUnit unit : enemyUnits) {
-    		WeaponType weapon = unit.getCurrentWeapon();
-    		int range = weapon.getRange();
+		for (EnemyUnit unit : enemyUnits) {
+			WeaponType weapon = unit.getCurrentWeapon();
+			int range = weapon.getRange();
 
 			Point position = unit.getPosition();
 
@@ -245,9 +245,9 @@ public class PlayerAI {
 			if (in_range) {
 				safety = Math.max(safety, DANGER_VAL);
 				break;
-    		}
-    		else {
-    			if (safety < CAUTION_VAL) {
+			}
+			else {
+				if (safety < CAUTION_VAL) {
 					Point[] adjacent_points = getAdjacentPoints(position);
 
 					for (Point p : adjacent_points) {
@@ -257,16 +257,16 @@ public class PlayerAI {
 							break;
 						}
 					}
-    			}
-    		}
-    	}
+				}
+			}
+		}
 
-    	return safety;
-    }
+		return safety;
+	}
 
-    // Return a safe next move (Point to move to) to advance from src towards dst
-    // Return null if there is not safe next move or the best safe move is to standby or move away from the dst
-    static Point reRoute(Point src, Point dst, EnemyUnit[] enemy_units, World world) {
+	// Return a safe next move (Point to move to) to advance from src towards dst
+	// Return null if there is not safe next move or the best safe move is to standby or move away from the dst
+	static Point reRoute(Point src, Point dst, EnemyUnit[] enemy_units, World world) {
 		Direction direction = world.getNextDirectionInPath(src, dst);
 		Point next_point = direction.movePoint(src);
 
@@ -292,46 +292,46 @@ public class PlayerAI {
 		}
 
 		return rerouted_point;
-    }
+	}
 
-    static Point[] getAdjacentPoints(Point point) {
-    	int x = point.getX();
-    	int y = point.getY();
+	static Point[] getAdjacentPoints(Point point) {
+		int x = point.getX();
+		int y = point.getY();
 
-    	Point[] adjacent_points = new Point[8];
+		Point[] adjacent_points = new Point[8];
 
-    	adjacent_points[0] = new Point(x-1, y-1);
-    	adjacent_points[1] = new Point(x-1, y);
-    	adjacent_points[2] = new Point(x-1, y+1);
-    	adjacent_points[3] = new Point(x, y+1);
-    	adjacent_points[4] = new Point(x+1, y+1);
-    	adjacent_points[5] = new Point(x+1, y);
-    	adjacent_points[6] = new Point(x+1, y-1);
-    	adjacent_points[7] = new Point(x, y-1);
+		adjacent_points[0] = new Point(x-1, y-1);
+		adjacent_points[1] = new Point(x-1, y);
+		adjacent_points[2] = new Point(x-1, y+1);
+		adjacent_points[3] = new Point(x, y+1);
+		adjacent_points[4] = new Point(x+1, y+1);
+		adjacent_points[5] = new Point(x+1, y);
+		adjacent_points[6] = new Point(x+1, y-1);
+		adjacent_points[7] = new Point(x, y-1);
 
-    	return adjacent_points;
-    }
+		return adjacent_points;
+	}
 
-    static int getPathLengthWrapper(World world, Point start, Point end) {
-    	if (start.equals(end)) {
-    		return 0;
-    	}
+	static int getPathLengthWrapper(World world, Point start, Point end) {
+		if (start.equals(end)) {
+			return 0;
+		}
 
-    	int distance = world.getPathLength(start, end);
+		int distance = world.getPathLength(start, end);
 
-    	if (distance == 0) { // world.getPathLength returns 0 is path doesn't exist
-    		distance = Integer.MAX_VALUE;
-    	}
+		if (distance == 0) { // world.getPathLength returns 0 is path doesn't exist
+			distance = Integer.MAX_VALUE;
+		}
 
-    	return distance;
-    }
+		return distance;
+	}
 
-    static boolean hasGoodWeapon(UnitClient unit) {
-    	return unit.getCurrentWeapon() != WeaponType.MINI_BLASTER;
-    }
+	static boolean hasGoodWeapon(UnitClient unit) {
+		return unit.getCurrentWeapon() != WeaponType.MINI_BLASTER;
+	}
 
-    static Integer[] assignOnePointToEach(Point[] points, UnitClient[] units, World world) {
-    	Integer[][] wanted_points = new Integer[units.length][units.length]; // index 0 is closest, 1 is farther, etc.
+	static Integer[] assignOnePointToEach(Point[] points, UnitClient[] units, World world) {
+		Integer[][] wanted_points = new Integer[units.length][units.length]; // index 0 is closest, 1 is farther, etc.
 
 		for (int iunit = 0; iunit < units.length; ++iunit) {
 			UnitClient u = units[iunit];
@@ -414,33 +414,33 @@ public class PlayerAI {
 		}
 
 		return final_targets;
-    }
+	}
 
-    public static Point[] getLocationsOf(Pickup[] pickups) {
-    	Point[] result = new Point[pickups.length];
-    	for (int i = 0; i < pickups.length; ++i) {
-    		result[i] = pickups[i].getPosition();
-    	}
-    	return result;
-    }
+	public static Point[] getLocationsOf(Pickup[] pickups) {
+		Point[] result = new Point[pickups.length];
+		for (int i = 0; i < pickups.length; ++i) {
+			result[i] = pickups[i].getPosition();
+		}
+		return result;
+	}
 
-    public static Point[] getLocationsOf(ControlPoint[] cpoints) {
-    	Point[] result = new Point[cpoints.length];
-    	for (int i = 0; i < cpoints.length; ++i) {
-    		result[i] = cpoints[i].getPosition();
-    	}
-    	return result;
-    }
+	public static Point[] getLocationsOf(ControlPoint[] cpoints) {
+		Point[] result = new Point[cpoints.length];
+		for (int i = 0; i < cpoints.length; ++i) {
+			result[i] = cpoints[i].getPosition();
+		}
+		return result;
+	}
 
-    public static Point[] getLocationsOf(UnitClient[] units) {
-    	Point[] result = new Point[units.length];
-    	for (int i = 0; i < units.length; ++i) {
-    		result[i] = units[i].getPosition();
-    	}
-    	return result;
-    }
+	public static Point[] getLocationsOf(UnitClient[] units) {
+		Point[] result = new Point[units.length];
+		for (int i = 0; i < units.length; ++i) {
+			result[i] = units[i].getPosition();
+		}
+		return result;
+	}
 
-    public static int[] getPathingDistancesTo(Point src, Point[] points, World world) {
+	public static int[] getPathingDistancesTo(Point src, Point[] points, World world) {
 		int distances[] = new int[points.length];
 
 		for (int ipoint = 0; ipoint < points.length; ++ipoint) {
@@ -448,7 +448,7 @@ public class PlayerAI {
 		}
 
 		return distances;
-    }
+	}
 
 	public static <U extends UnitClient> U findByCallsign(UnitCallSign cs, U[] units) {
 		for (int i = 0; i < units.length; ++i) {
