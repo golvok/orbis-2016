@@ -23,6 +23,8 @@ public class PlayerAI {
 
 	final static double DANGER_VAL = 10.0;
 	final static double CAUTION_VAL = 5.0;
+	
+	final static boolean AGGRESSIVE = true;
 
 	public static final int MAX_NUM_TEAM_MEMBERS = 4;
 
@@ -55,6 +57,131 @@ public class PlayerAI {
 		final EnemyUnit[] enemy_units = getAliveUnits(may_be_dead_enemy_units).toArray(new EnemyUnit[0]);
 
 		TurnData turn_data = new TurnData(friendly_units);
+
+		int[] num_enemies_targetting_friendly = new int[friendly_units.length];
+		int[] damage_enemies_can_deal_to_friendly = new int[friendly_units.length];
+		
+		//int[] num_friendlies_targetting_enemy = new int[enemy_units.length];
+		//int[] damage_friendlies_can_deal_to_enemy = new int[enemy_units.length];
+		
+		int[] num_enemies_friendly_can_target = new int[friendly_units.length];
+		//int[] damage_
+		
+		ArrayList<ArrayList<Integer>> enemies_that_friendly_can_shoot = new ArrayList<ArrayList<Integer>>();
+		
+		for (int iunit = 0; iunit < friendly_units.length; ++iunit) {
+			ArrayList<Integer> enemies_shootable = new ArrayList<Integer>();
+			
+			FriendlyUnit me = friendly_units[iunit];
+			
+			for (int eunit = 0; eunit < enemy_units.length; ++eunit) {
+				EnemyUnit enemy = enemy_units[eunit];
+				
+				if (canXShootY(enemy, me, world)) { // can enemy shoot me
+					++(num_enemies_targetting_friendly[iunit]);
+					damage_enemies_can_deal_to_friendly[iunit] += enemy.getCurrentWeapon().getDamage();
+				}
+
+				if (canXShootY(me, enemy, world) && enemy.getShieldedTurnsRemaining() <= 0) { // can I shoot enemy
+					enemies_shootable.add(eunit);
+					
+					//++(num_friendlies_targetting_enemy[eunit]);
+					//damage_friendlies_can_deal_to_enemy[eunit] += me.getCurrentWeapon().getDamage();
+					
+					++(num_enemies_friendly_can_target[iunit]);
+				}
+			}
+			
+			// damage multiplier
+			damage_enemies_can_deal_to_friendly[iunit] *= num_enemies_targetting_friendly[iunit];
+			
+			
+			enemies_that_friendly_can_shoot.add(enemies_shootable);
+		}
+		
+		/*
+		// damage multiplier for hitting enemy bots
+		for (int eunit = 0; eunit < enemy_units.length; ++eunit) {
+			damage_friendlies_can_deal_to_enemy[eunit] *= num_friendlies_targetting_enemy[eunit];
+		}
+		*/
+
+		boolean done = false;
+		int num_levels = friendly_units.length;
+		int[] level_index = new int[num_levels];
+		
+		int total_damage_max = 0;
+		int[] max_damage_level_index = new int[num_levels];
+
+		int level = num_levels - 1;
+		
+		while (level >= 0 && enemies_that_friendly_can_shoot.get(level).isEmpty()) {
+			--level;
+		}
+		
+		while(!done) {
+			// Evaluate total damage.
+			int total_damage = 0;
+			int[] num_friendlies_targetting_enemy = new int[enemy_units.length];
+			int[] damage_friendlies_can_deal_to_enemy = new int[enemy_units.length];
+			
+			for (int i = 0; i < num_levels; ++i) {
+				FriendlyUnit friendly = friendly_units[i];
+				
+				if (enemies_that_friendly_can_shoot.get(i).isEmpty()) {
+					level_index[i] = -1;
+				}
+				else {
+					int enemy_index = enemies_that_friendly_can_shoot.get(i).get(level_index[i]);
+					
+					EnemyUnit enemy = enemy_units[enemy_index];
+					
+					++(num_friendlies_targetting_enemy[enemy_index]);
+					damage_friendlies_can_deal_to_enemy[enemy_index] += friendly.getCurrentWeapon().getDamage();
+				}
+			}
+			
+			// damage multiplier for hitting enemy bots
+			for (int eunit = 0; eunit < enemy_units.length; ++eunit) {
+				damage_friendlies_can_deal_to_enemy[eunit] *= num_friendlies_targetting_enemy[eunit];
+				total_damage += damage_friendlies_can_deal_to_enemy[eunit];
+			}
+			
+			if (total_damage > total_damage_max) {
+				total_damage_max = total_damage;
+				
+				for (int i = 0; i < num_levels; ++i) {
+					max_damage_level_index[i] = level_index[i];
+				}
+			}
+						
+			boolean done_updating = false;
+			
+			while(!done_updating) {
+				if (level < 0) {
+					done = true;
+					break;
+				}
+				
+				++(level_index[level]);
+				done_updating = true;
+
+				if (level_index[level] >= enemies_that_friendly_can_shoot.get(level).size()) {
+					level_index[level] = 0;
+					--level;
+					while (level >= 0 && enemies_that_friendly_can_shoot.get(level).isEmpty()) {
+						--level;
+					}
+					done_updating = false;
+				}
+			}
+			
+			// reset level
+			level = num_levels - 1;
+			while (level >= 0 && enemies_that_friendly_can_shoot.get(level).isEmpty()) {
+				--level;
+			}
+		}
 
 		// prefer by distance.
 		// if tie,
@@ -99,13 +226,13 @@ public class PlayerAI {
 
 				final Point next_point = direction.movePoint(my_pos);
 
-				if (getSquareSafety(next_point, enemy_units, world) <= CAUTION_VAL) {
+				if (getSquareSafety(next_point, enemy_units, world) <= (AGGRESSIVE ? DANGER_VAL : CAUTION_VAL)) {
 
 					turn_data = setMeToMove(me, next_point, chosen_non_combative_objective, turn_data, world);
 				}
 				else {
 					final Point rerouted_point = reRoute(my_pos, target_position, world, new ShouldVisitPointTester() { @Override public boolean shouldVisitPoint(Point p) {
-						return getSquareSafety(p, enemy_units, world) <= CAUTION_VAL;
+						return getSquareSafety(p, enemy_units, world) <= (AGGRESSIVE ? DANGER_VAL : CAUTION_VAL);
 					}});
 
 					if (rerouted_point != null) {
@@ -116,12 +243,23 @@ public class PlayerAI {
 		}
 
 		/* if (ATTACK_MODE) */ {
+			for (int i = 0; i < num_levels; ++i) {
+				if (!enemies_that_friendly_can_shoot.get(i).isEmpty()) {
+					FriendlyUnit me = friendly_units[i];
+					EnemyUnit enemy = enemy_units[enemies_that_friendly_can_shoot.get(i).get(max_damage_level_index[i])];
+
+					turn_data.setData(me, Objective.makeShootObjective(enemy), UnitAction.SHOOT, enemy.getPosition(), world);
+				}
+			}
+			
+			/*
 			for (FriendlyUnit me : friendly_units) {
 				for (EnemyUnit enemy : enemy_units) {
 					turn_data = canShootDoShoot(me, enemy, world, turn_data);
 					// TODO do something more intelligent that isn't order dependent...
 				}
 			}
+			*/
 		}
 
 		for (FriendlyUnit me : friendly_units) {
@@ -700,8 +838,8 @@ public class PlayerAI {
 		}
 	}
 
-	private static boolean canXShootY(UnitClient friendly, UnitClient enemy, World w) {
-		return w.canShooterShootTarget(friendly.getPosition(), enemy.getPosition(), friendly.getCurrentWeapon().getRange());
+	private static boolean canXShootY(UnitClient x, UnitClient y, World w) {
+		return w.canShooterShootTarget(x.getPosition(), y.getPosition(), x.getCurrentWeapon().getRange());
 	}
 
 	private static TurnData setMeToMove(FriendlyUnit me, Point p, Objective obj, TurnData turn_data, World w) {
