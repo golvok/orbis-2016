@@ -1,5 +1,6 @@
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.PriorityQueue;
@@ -108,6 +109,9 @@ public class PlayerAI {
 	final static double CAUTION_VAL = 5.0;
 
 	public static final int MAX_NUM_TEAM_MEMBERS = 4;
+	
+	// state vars
+	ObjectiveSet last_objectives = new ObjectiveSet();
 
     public PlayerAI() {
 		//Any initialization code goes here.
@@ -124,6 +128,8 @@ public class PlayerAI {
 		final Pickup[] all_pickups = world.getPickups();
 		final FriendlyUnit[] friendly_units = getAliveUnits(may_be_dead_friendly_units).toArray(new FriendlyUnit[0]);
 		final EnemyUnit[] enemy_units = getAliveUnits(may_be_dead_enemy_units).toArray(new EnemyUnit[0]);
+		
+		ObjectiveSet objectives_this_turn = new ObjectiveSet(friendly_units); // inits to all NONE
 
 		ArrayList<Objective> pickup_objectives = makeObjectivesFromPickups(IndexesToObjects(
 			assignOnePointToEach(
@@ -137,11 +143,13 @@ public class PlayerAI {
 			if (pickup_objective.getType() == Objective.Type.NONE) {
 				continue;
 			}
+			
 			Pickup p = pickup_objective.getPickup(world);
 
 			Point my_pos = me.getPosition();
 
 			if (p.getPosition().equals(my_pos)) {
+				objectives_this_turn.setObjective(me, pickup_objective);
 				me.pickupItemAtPosition();
 			} else {
 				Point target = p.getPosition();
@@ -150,13 +158,14 @@ public class PlayerAI {
 				Point next_point = direction.movePoint(my_pos);
 
 				if (getSquareSafety(next_point, enemy_units, world) <= CAUTION_VAL) {
-					me.move(next_point);
+
+					objectives_this_turn = moveMeAndSetObjective(me, next_point, pickup_objective, objectives_this_turn);
 				}
 				else {
 					Point rerouted_point = reRoute(my_pos, target, enemy_units, world);
 
 					if (rerouted_point != null) {
-						me.move(rerouted_point);
+						objectives_this_turn = moveMeAndSetObjective(me, rerouted_point, pickup_objective, objectives_this_turn);
 					}
 				}
 			}
@@ -165,14 +174,18 @@ public class PlayerAI {
     	/* if (ATTACK_MODE) */ {
 			for (FriendlyUnit friendly : friendly_units) {
 				for (EnemyUnit enemy : enemy_units) {
-					boolean can_shoot = world.canShooterShootTarget(friendly.getPosition(), enemy.getPosition(), friendly.getCurrentWeapon().getRange());
+					boolean can_shoot = canXShootY(friendly, enemy, world);
 
 					if (can_shoot) {
+						objectives_this_turn.setObjective(friendly, Objective.makeShootObjective(enemy));
 						friendly.shootAt(enemy);
 					}
 				}
 			}
     	}
+    	
+    	// done making moves - save new objectives as the last ones
+    	last_objectives = objectives_this_turn;
     }
 
     // Return a safety value of the provided square/point
@@ -429,5 +442,58 @@ public class PlayerAI {
 		}
 
 		return result;
+	}
+	
+	private static class ObjectiveSet {
+		EnumMap<UnitCallSign, Objective> objectives = new EnumMap<UnitCallSign, Objective>(UnitCallSign.class);
+
+		
+		public ObjectiveSet() { }
+		public ObjectiveSet(FriendlyUnit[] funits) {
+			for (int i = 0; i < funits.length; ++i) {
+				setObjective(funits[i], Objective.makeDoNothingObjective());
+			}
+		}
+		
+		public Objective getObjective(UnitClient uc) { return getObjective(uc.getCallSign()); }
+		public Objective getObjective(UnitCallSign ucs) {
+			Objective result = objectives.get(ucs);
+			if (result == null) {
+				return Objective.makeDoNothingObjective();
+			} else {
+				return result;
+			}
+		}
+
+		public Objective setObjective(UnitClient uc, Objective obj) { return setObjective(uc.getCallSign(), obj); }
+		public Objective setObjective(UnitCallSign ucs, Objective obj) {
+			return objectives.put(ucs, obj);
+		}
+
+		public void clear() { objectives.clear(); }
+		
+		public void resetTo(UnitClient[] units, Objective[] new_objectives) {
+	    	clear();
+	    	for (int i = 0; i < units.length; ++i) {
+	    		setObjective(units[i], new_objectives[i]);
+	    	}
+			
+		}
+	}
+	
+	private static boolean canXShootY(UnitClient friendly, UnitClient enemy, World w) {
+		return w.canShooterShootTarget(friendly.getPosition(), enemy.getPosition(), friendly.getCurrentWeapon().getRange());
+	}
+	
+	private static ObjectiveSet moveMeAndSetObjective(FriendlyUnit me, Point p, Objective obj, ObjectiveSet objectives) {
+		objectives.setObjective(me, obj);
+		me.move(p);
+		return objectives;
+	}
+	
+	private static ObjectiveSet moveMeAndSetObjective(FriendlyUnit me, Direction d, Objective obj, ObjectiveSet objectives) {
+		objectives.setObjective(me, obj);
+		me.move(d);
+		return objectives;
 	}
 }
