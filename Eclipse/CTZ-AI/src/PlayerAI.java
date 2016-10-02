@@ -150,6 +150,7 @@ public class PlayerAI {
 		//     another robot is in the way (if this mutually happens in a corridor... nothing happens sometimes...)
 		//     another robot (might be on your team!) tried to move to the same place
 		checkForNoneObjectives(turn_data.objectives, friendly_units);
+		printTurnData(turn_data, friendly_units, enemy_units, world, DEBUG_PRINTS);
 
 		// do moves
 		applyMoves(turn_data, friendly_units, enemy_units);
@@ -713,6 +714,40 @@ public class PlayerAI {
 		return found_none_objective;
 	}
 
+	private static void printTurnData(TurnData turn_data, FriendlyUnit[] funits, EnemyUnit[] eunits, World w, boolean doPrinting) {
+		if (!doPrinting) { return; }
+		for (FriendlyUnit me : funits) {
+			System.out.print(me.getCallSign() + " : ");
+			Objective o = turn_data.objectives.getObjective(me);
+			UnitAction ua = turn_data.getActionType(me);
+			Point mp = turn_data.getMovePoint(me);
+			System.out.print("Location = " + me.getPosition());
+			System.out.print(", Objective = {" + o.getType() + "@" + o.getLocationOfTarget(w, eunits) + ' ');
+			switch (o.getType()) {
+			case PICKUP:
+				System.out.print(o.getPickup(w).getPickupType());
+				break;
+			case CAPTURE:
+				if (o.getControlPoint(w).isMainframe()) {
+					System.out.print("Mainframe");
+					break;
+				} else {
+					System.out.print("Flag");
+					break;
+				}
+			case SHOOT:
+				System.out.print(o.getEnemy(eunits).getCallSign());
+				break;
+			default:
+				break;
+			}
+			System.out.print("}, ");
+			System.out.print("Action = " + ua);
+			System.out.print(", Point associated = " + mp);
+			System.out.println();
+		}
+	}
+
 	private static void applyMoves(TurnData turn_data, FriendlyUnit[] funits, EnemyUnit[] eunits) {
 		for (FriendlyUnit me : funits) {
 			Objective o = turn_data.objectives.getObjective(me);
@@ -760,12 +795,14 @@ public class PlayerAI {
 			}
 		}
 
-		public Point getMovePoint(FriendlyUnit me) {
-			return move_points.get(me.getCallSign());
+		public Point getMovePoint(FriendlyUnit me) { return getMovePoint(me.getCallSign()); }
+		public Point getMovePoint(UnitCallSign ucs) {
+			return move_points.get(ucs);
 		}
 
-		public UnitAction getActionType(FriendlyUnit me) {
-			return action_types.get(me.getCallSign());
+		public UnitAction getActionType(FriendlyUnit me) { return getActionType(me.getCallSign()); }
+		public UnitAction getActionType(UnitCallSign ucs) {
+			return action_types.get(ucs);
 		}
 
 		public TurnData() { }
