@@ -103,13 +103,19 @@ public class PlayerAI {
 
 		public Type getType() { return type; }
 
+		public boolean isNone() {
+			return getType() == Type.NONE;
+		}
+
 	}
+
+	final static boolean DEBUG_PRINTS = true;
 
 	final static double DANGER_VAL = 10.0;
 	final static double CAUTION_VAL = 5.0;
 
 	public static final int MAX_NUM_TEAM_MEMBERS = 4;
-	
+
 	// state vars
 	ObjectiveSet last_objectives = new ObjectiveSet();
 
@@ -128,9 +134,17 @@ public class PlayerAI {
 		final Pickup[] all_pickups = world.getPickups();
 		final FriendlyUnit[] friendly_units = getAliveUnits(may_be_dead_friendly_units).toArray(new FriendlyUnit[0]);
 		final EnemyUnit[] enemy_units = getAliveUnits(may_be_dead_enemy_units).toArray(new EnemyUnit[0]);
-		
+
 		ObjectiveSet objectives_this_turn = new ObjectiveSet(friendly_units); // inits to all NONE
 
+		// prefer by distance.
+		// if tie,
+		//     prefer pickups over mainframes
+		//     over neutral capture points
+		//     over enemy capture points
+		//     over killing
+		// always shoot if in range
+		//     unless standing on a more useful weapon?
 		ArrayList<Objective> pickup_objectives = makeObjectivesFromPickups(IndexesToObjects(
 			assignOnePointToEach(
 				getLocationsOf(all_pickups), friendly_units, world
@@ -143,7 +157,7 @@ public class PlayerAI {
 			if (pickup_objective.getType() == Objective.Type.NONE) {
 				continue;
 			}
-			
+
 			Pickup p = pickup_objective.getPickup(world);
 
 			Point my_pos = me.getPosition();
@@ -172,18 +186,42 @@ public class PlayerAI {
 		}
 
     	/* if (ATTACK_MODE) */ {
-			for (FriendlyUnit friendly : friendly_units) {
+			for (FriendlyUnit me : friendly_units) {
 				for (EnemyUnit enemy : enemy_units) {
-					boolean can_shoot = canXShootY(friendly, enemy, world);
-
-					if (can_shoot) {
-						objectives_this_turn.setObjective(friendly, Objective.makeShootObjective(enemy));
-						friendly.shootAt(enemy);
-					}
+					objectives_this_turn = canShootDoShoot(me, enemy, world, objectives_this_turn);
+					// TODO do something more intelligent that isn't order dependent...
 				}
 			}
     	}
-    	
+
+    	for (FriendlyUnit me : friendly_units) {
+    		if (objectives_this_turn.getObjective(me).isNone()) {
+    			// if nothing to do, kill, kill, kill!
+    			Point[] enemy_locations = getLocationsOf(enemy_units);
+    			Integer closest_index = closestPointDjkstra(me.getPosition(), enemy_locations, world);
+    			if (closest_index != null) {
+					EnemyUnit target = enemy_units[closest_index];
+					objectives_this_turn = canShootDoShoot(me, target, world, objectives_this_turn);
+					if (objectives_this_turn.getObjective(me).isNone() == true) {
+						// couldn't shoot, so move toward target
+						// TODO move in line-of-sight, taking into account weapon ranges.
+						objectives_this_turn = moveMeAndSetObjective(me, target.getPosition(), Objective.makeShootObjective(target), objectives_this_turn);
+					}
+    			}
+    		}
+    	}
+
+    	// TODO check here if shoot objective is same as last time, and we wanted to move, and we didn't move
+    	// it's either a 2 bots trying to got the same square or a bot is in the way. Either case, renegotiate.
+
+    	// TODO resolve team blocking by having storing all requests to move, and arbitrating here (ie. right at the end)
+
+    	// will print, if DEBUG_PRINTS is true, and should be guaranteed to not do so by the "kill, kill, kill" block
+    	// other reasons you might not move:
+    	//     another robot is in the way (if this mutually happens in a corridor... nothing happens sometimes...)
+    	//     another robot (might be on your team!) tried to move to the same place
+    	checkForNoneObjectives(objectives_this_turn, friendly_units);
+
     	// done making moves - save new objectives as the last ones
     	last_objectives = objectives_this_turn;
     }
@@ -210,15 +248,15 @@ public class PlayerAI {
     		}
     		else {
     			if (safety < CAUTION_VAL) {
-	        		Point[] adjacent_points = getAdjacentPoints(position);
+					Point[] adjacent_points = getAdjacentPoints(position);
 
-	        		for (Point p : adjacent_points) {
-	        			if (world.canShooterShootTarget(p, point, range)) {
-	        				// Can be dangerous next turn
-	        				safety = Math.max(safety, CAUTION_VAL);
-	        				break;
-	        			}
-	        		}
+					for (Point p : adjacent_points) {
+						if (world.canShooterShootTarget(p, point, range)) {
+							// Can be dangerous next turn
+							safety = Math.max(safety, CAUTION_VAL);
+							break;
+						}
+					}
     			}
     		}
     	}
@@ -394,6 +432,14 @@ public class PlayerAI {
     	return result;
     }
 
+    public static Point[] getLocationsOf(UnitClient[] units) {
+    	Point[] result = new Point[units.length];
+    	for (int i = 0; i < units.length; ++i) {
+    		result[i] = units[i].getPosition();
+    	}
+    	return result;
+    }
+
     public static int[] getPathingDistancesTo(Point src, Point[] points, World world) {
 		int distances[] = new int[points.length];
 
@@ -443,18 +489,18 @@ public class PlayerAI {
 
 		return result;
 	}
-	
+
 	private static class ObjectiveSet {
 		EnumMap<UnitCallSign, Objective> objectives = new EnumMap<UnitCallSign, Objective>(UnitCallSign.class);
 
-		
+
 		public ObjectiveSet() { }
 		public ObjectiveSet(FriendlyUnit[] funits) {
 			for (int i = 0; i < funits.length; ++i) {
 				setObjective(funits[i], Objective.makeDoNothingObjective());
 			}
 		}
-		
+
 		public Objective getObjective(UnitClient uc) { return getObjective(uc.getCallSign()); }
 		public Objective getObjective(UnitCallSign ucs) {
 			Objective result = objectives.get(ucs);
@@ -471,29 +517,66 @@ public class PlayerAI {
 		}
 
 		public void clear() { objectives.clear(); }
-		
+
 		public void resetTo(UnitClient[] units, Objective[] new_objectives) {
-	    	clear();
-	    	for (int i = 0; i < units.length; ++i) {
-	    		setObjective(units[i], new_objectives[i]);
-	    	}
-			
+			clear();
+			for (int i = 0; i < units.length; ++i) {
+				setObjective(units[i], new_objectives[i]);
+			}
+
 		}
 	}
-	
+
 	private static boolean canXShootY(UnitClient friendly, UnitClient enemy, World w) {
 		return w.canShooterShootTarget(friendly.getPosition(), enemy.getPosition(), friendly.getCurrentWeapon().getRange());
 	}
-	
+
 	private static ObjectiveSet moveMeAndSetObjective(FriendlyUnit me, Point p, Objective obj, ObjectiveSet objectives) {
 		objectives.setObjective(me, obj);
 		me.move(p);
 		return objectives;
 	}
-	
+
 	private static ObjectiveSet moveMeAndSetObjective(FriendlyUnit me, Direction d, Objective obj, ObjectiveSet objectives) {
 		objectives.setObjective(me, obj);
 		me.move(d);
 		return objectives;
 	}
+
+	private static ObjectiveSet canShootDoShoot(FriendlyUnit me, EnemyUnit enemy, World w, ObjectiveSet objectives) {
+		boolean can_shoot = canXShootY(me, enemy, w);
+
+		if (can_shoot) {
+			objectives.setObjective(me, Objective.makeShootObjective(enemy));
+			me.shootAt(enemy);
+		}
+		return objectives;
+	}
+
+	private static Integer closestPointDjkstra(Point me, Point[] points, World w) {
+		int min_dist = Integer.MAX_VALUE;
+		Integer best = null;
+		for (int i = 0; i < points.length; ++i) {
+			int len = getPathLengthWrapper(w, me, points[i]);
+			if (len < min_dist) {
+				best = i;
+				min_dist = len;
+			}
+		}
+		return best;
+	}
+
+	private static boolean checkForNoneObjectives(ObjectiveSet objectives, FriendlyUnit[] f_units) {
+		boolean found_none_objective = false;
+		for (int i = 0; i < f_units.length; ++i) {
+			if (objectives.getObjective(f_units[i]).isNone()) {
+				found_none_objective = true;
+				if (DEBUG_PRINTS){
+					System.out.printf("%s's objective is still NONE!\n", f_units[i].getCallSign().toString());
+				}
+			}
+		}
+		return found_none_objective;
+	}
+
 }
