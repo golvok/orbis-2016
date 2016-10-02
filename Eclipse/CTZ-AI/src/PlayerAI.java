@@ -72,8 +72,15 @@ public class PlayerAI {
 				
 				Point next_point = direction.movePoint(my_pos);
 				
-				if (getSquareSafety(next_point, enemy_units, world) <= DANGER_VAL) {
+				if (getSquareSafety(next_point, enemy_units, world) <= CAUTION_VAL) {
 					me.move(next_point);
+				}
+				else {
+					Point rerouted_point = reRoute(my_pos, target, enemy_units, world);
+					
+					if (rerouted_point != null) {
+						me.move(rerouted_point);
+					}
 				}
 			}
 		}
@@ -113,44 +120,82 @@ public class PlayerAI {
     		}
     		else {
     			if (safety < CAUTION_VAL) {
-	        		int x = position.getX();
-	        		int y = position.getY();
-
-	        		boolean can_be_dangerous_next_turn = false;
-	        		if (world.canShooterShootTarget(new Point(x-1, y-1), point, range)) {
-	        			can_be_dangerous_next_turn = true;
-	        		}
-	        		else if (world.canShooterShootTarget(new Point(x-1, y), point, range)) {
-	        			can_be_dangerous_next_turn = true;
-	        		}
-	        		else if (world.canShooterShootTarget(new Point(x-1, y+1), point, range)) {
-	        			can_be_dangerous_next_turn = true;
-	        		}
-	        		else if (world.canShooterShootTarget(new Point(x, y+1), point, range)) {
-	        			can_be_dangerous_next_turn = true;
-	        		}
-	        		else if (world.canShooterShootTarget(new Point(x+1, y+1), point, range)) {
-	        			can_be_dangerous_next_turn = true;
-	        		}
-	        		else if (world.canShooterShootTarget(new Point(x+1, y), point, range)) {
-	        			can_be_dangerous_next_turn = true;
-	        		}
-	        		else if (world.canShooterShootTarget(new Point(x+1, y-1), point, range)) {
-	        			can_be_dangerous_next_turn = true;
-	        		}
-	        		else if (world.canShooterShootTarget(new Point(x, y-1), point, range)) {
-	        			can_be_dangerous_next_turn = true;
-	        		}
-
-
-	        		if (can_be_dangerous_next_turn) {
-	        			safety = Math.max(safety, CAUTION_VAL);
+	        		Point[] adjacent_points = getAdjacentPoints(position);
+	        		
+	        		for (Point p : adjacent_points) {
+	        			if (world.canShooterShootTarget(p, point, range)) {
+	        				// Can be dangerous next turn
+	        				safety = Math.max(safety, CAUTION_VAL);
+	        				break;
+	        			}
 	        		}
     			}
     		}
     	}
 
     	return safety;
+    }
+    
+    // Return a safe next move (Point to move to) to advance from src towards dst
+    // Return null if there is not safe next move or the best safe move is to standby or move away from the dst
+    static Point reRoute(Point src, Point dst, EnemyUnit[] enemy_units, World world) {
+		Direction direction = world.getNextDirectionInPath(src, dst);
+		Point next_point = direction.movePoint(src);
+		
+		int current_distance = getPathLengthWrapper(world, src, dst);
+		int optimal_distance = getPathLengthWrapper(world, next_point, dst);
+		
+		Point[] adjacent_points = getAdjacentPoints(src);
+		
+		int min_distance = current_distance;
+		Point rerouted_point = null;
+		for (Point p : adjacent_points) {
+			if (getSquareSafety(p, enemy_units, world) <= CAUTION_VAL) {
+				int distance = getPathLengthWrapper(world, p, dst);
+				if (distance < min_distance) {
+					min_distance = distance;
+					rerouted_point = p;
+					
+					if (distance == optimal_distance) {
+						break;
+					}
+				}
+			}
+		}
+		
+		return rerouted_point;
+    }
+    
+    static Point[] getAdjacentPoints(Point point) {
+    	int x = point.getX();
+    	int y = point.getY();
+    	
+    	Point[] adjacent_points = new Point[8];
+
+    	adjacent_points[0] = new Point(x-1, y-1);
+    	adjacent_points[1] = new Point(x-1, y);
+    	adjacent_points[2] = new Point(x-1, y+1);
+    	adjacent_points[3] = new Point(x, y+1);
+    	adjacent_points[4] = new Point(x+1, y+1);
+    	adjacent_points[5] = new Point(x+1, y);
+    	adjacent_points[6] = new Point(x+1, y-1);
+    	adjacent_points[7] = new Point(x, y-1);
+    	
+    	return adjacent_points;
+    }
+    
+    static int getPathLengthWrapper(World world, Point start, Point end) {
+    	if (start.equals(end)) {
+    		return 0;
+    	}
+    	
+    	int distance = world.getPathLength(start, end);
+    	
+    	if (distance == 0) { // world.getPathLength returns 0 is path doesn't exist
+    		distance = Integer.MAX_VALUE;
+    	}
+    	
+    	return distance;
     }
 
     static boolean hasGoodWeapon(UnitClient unit) {
@@ -220,7 +265,7 @@ public class PlayerAI {
 				}
 
 				// add to total
-				total_distance += world.getPathLength(units[iunit].getPosition(), points[point_index]);
+				total_distance += getPathLengthWrapper(world, units[iunit].getPosition(), points[point_index]);
 			}
 			if (use_conflict || num_nopickups > (units.length - points.length)) {
 				continue;
@@ -263,7 +308,7 @@ public class PlayerAI {
 		int distances[] = new int[points.length];
 
 		for (int ipoint = 0; ipoint < points.length; ++ipoint) {
-			distances[ipoint] = world.getPathLength(src, points[ipoint]);
+			distances[ipoint] = getPathLengthWrapper(world, src, points[ipoint]);
 		}
 
 		return distances;
