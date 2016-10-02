@@ -1,12 +1,10 @@
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.PriorityQueue;
 
 import com.orbischallenge.ctz.objects.ControlPoint;
-import com.orbischallenge.ctz.Constants;
 import com.orbischallenge.ctz.objects.EnemyUnit;
 import com.orbischallenge.ctz.objects.FriendlyUnit;
 import com.orbischallenge.ctz.objects.Pickup;
@@ -14,6 +12,7 @@ import com.orbischallenge.ctz.objects.UnitClient;
 import com.orbischallenge.ctz.objects.World;
 import com.orbischallenge.ctz.objects.enums.Direction;
 import com.orbischallenge.ctz.objects.enums.Team;
+import com.orbischallenge.ctz.objects.enums.UnitAction;
 import com.orbischallenge.ctz.objects.enums.UnitCallSign;
 import com.orbischallenge.ctz.objects.enums.WeaponType;
 import com.orbischallenge.game.engine.Point;
@@ -29,6 +28,7 @@ public class PlayerAI {
 
 	// state vars
 	ObjectiveSet last_objectives = new ObjectiveSet();
+	Team our_team = Team.NONE;
 
 	public PlayerAI() {
 		//Any initialization code goes here.
@@ -41,8 +41,16 @@ public class PlayerAI {
 	 * @param enemyUnits An array of all 4 units on the enemy team. Their order won't change.
 	 * @param friendlyUnits An array of all 4 units on your team. Their order won't change.
 	 */
-	public void doMove(World world, EnemyUnit[] may_be_dead_enemy_units, FriendlyUnit[] may_be_dead_friendly_units) {
+	public void doMove(World input_w, EnemyUnit[] may_be_dead_enemy_units, FriendlyUnit[] may_be_dead_friendly_units) {
+		if (our_team == Team.NONE) { our_team = may_be_dead_friendly_units[0].getTeam(); } // one time setup
+
+		final World world = input_w;
 		final Pickup[] all_pickups = world.getPickups();
+		final ControlPoint[] all_control_points = world.getControlPoints();
+		final ControlPoint[] all_capture_flags = getCaptureFlags(all_control_points);
+		final ControlPoint[] not_our_capture_flags = getNeutralOrEnemyControlPoints(all_capture_flags, our_team);
+		final ControlPoint[] all_mainframes = getMainframes(all_control_points);
+		final ControlPoint[] not_our_mainframes = getNeutralOrEnemyControlPoints(all_mainframes, our_team);
 		final FriendlyUnit[] friendly_units = getAliveUnits(may_be_dead_friendly_units).toArray(new FriendlyUnit[0]);
 		final EnemyUnit[] enemy_units = getAliveUnits(may_be_dead_enemy_units).toArray(new EnemyUnit[0]);
 
@@ -56,41 +64,51 @@ public class PlayerAI {
 		//     over killing
 		// always shoot if in range
 		//     unless standing on a more useful weapon?
-		ArrayList<Objective> pickup_objectives = makeObjectivesFromPickups(IndexesToObjects(
-			assignOnePointToEach(
-				getLocationsOf(all_pickups), friendly_units, world
-			),
-		all_pickups));
+
+		final ArrayList<Objective> non_combative_objectives = new ArrayList<>(not_our_capture_flags.length + not_our_mainframes.length + all_pickups.length);
+		non_combative_objectives.addAll(makeObjectivesFromControlPoints(new ArrayList<ControlPoint>(Arrays.asList(not_our_capture_flags))));
+		non_combative_objectives.addAll(makeObjectivesFromControlPoints(new ArrayList<ControlPoint>(Arrays.asList(not_our_capture_flags))));
+		non_combative_objectives.addAll(makeObjectivesFromPickups(new ArrayList<Pickup>(Arrays.asList(all_pickups))));
+
+		Point[] cp_mf_and_pu_points = new Point[non_combative_objectives.size()];
+		for (int i = 0; i < non_combative_objectives.size(); ++i) {
+			cp_mf_and_pu_points[i] = non_combative_objectives.get(i).getLocationOfTarget(world, enemy_units);
+		}
+
+		// the ranking is done here. To tweak, change the numbers in ObjectPathLengthMultiplier
+		final ArrayList<Objective> chosen_non_combative_objectives = ReplaceNullObjectivesWithNones(IndexesToObjects(
+			assignOnePointToEach(cp_mf_and_pu_points, friendly_units, world, new ObjectPathLengthMultiplier(world, non_combative_objectives)),
+			non_combative_objectives
+		));
 
 		for (int iunit = 0; iunit < friendly_units.length; ++iunit) {
-			FriendlyUnit me = friendly_units[iunit];
-			Objective pickup_objective = pickup_objectives.get(iunit);
-			if (pickup_objective.getType() == Objective.Type.NONE) {
+			final FriendlyUnit me = friendly_units[iunit];
+			final Objective chosen_non_combative_objective = chosen_non_combative_objectives.get(iunit);
+			if (chosen_non_combative_objective.getType() == Objective.Type.NONE) {
 				continue;
 			}
 
-			Pickup p = pickup_objective.getPickup(world);
+			final Point target_position = chosen_non_combative_objective.getLocationOfTarget(world, enemy_units);
 
-			Point my_pos = me.getPosition();
+			final Point my_pos = me.getPosition();
 
-			if (p.getPosition().equals(my_pos)) {
-				objectives_this_turn.setObjective(me, pickup_objective);
+			if (chosen_non_combative_objective.getType() == Objective.Type.PICKUP && target_position.equals(my_pos)) {
+				objectives_this_turn.setObjective(me, chosen_non_combative_objective);
 				me.pickupItemAtPosition();
 			} else {
-				Point target = p.getPosition();
-				Direction direction = world.getNextDirectionInPath(my_pos, target);
+				final Direction direction = world.getNextDirectionInPath(my_pos, target_position);
 
-				Point next_point = direction.movePoint(my_pos);
+				final Point next_point = direction.movePoint(my_pos);
 
 				if (getSquareSafety(next_point, enemy_units, world) <= CAUTION_VAL) {
 
-					objectives_this_turn = moveMeAndSetObjective(me, next_point, pickup_objective, objectives_this_turn);
+					objectives_this_turn = moveMeAndSetObjective(me, next_point, chosen_non_combative_objective, objectives_this_turn);
 				}
 				else {
-					Point rerouted_point = reRoute(my_pos, target, enemy_units, world);
+					final Point rerouted_point = reRoute(my_pos, target_position, enemy_units, world);
 
 					if (rerouted_point != null) {
-						objectives_this_turn = moveMeAndSetObjective(me, rerouted_point, pickup_objective, objectives_this_turn);
+						objectives_this_turn = moveMeAndSetObjective(me, rerouted_point, chosen_non_combative_objective, objectives_this_turn);
 					}
 				}
 			}
@@ -108,6 +126,7 @@ public class PlayerAI {
 		for (FriendlyUnit me : friendly_units) {
 			if (objectives_this_turn.getObjective(me).isNone()) {
 				// if nothing to do, kill, kill, kill!
+				// TODO helping might be better - look at other units' objectives
 				Point[] enemy_locations = getLocationsOf(enemy_units);
 				Integer closest_index = closestPointDjkstra(me.getPosition(), enemy_locations, world);
 				if (closest_index != null) {
@@ -241,12 +260,49 @@ public class PlayerAI {
 		return unit.getCurrentWeapon() != WeaponType.MINI_BLASTER;
 	}
 
+	private static interface MultiplierMap{ double multiplierFor(int index); }
+
+	private static final class ObjectPathLengthMultiplier implements MultiplierMap {
+		private final World world;
+		private final ArrayList<Objective> objectives;
+
+		private ObjectPathLengthMultiplier(World world, ArrayList<Objective> objectives) {
+			this.world = world;
+			this.objectives = objectives;
+		}
+
+		@Override
+		public double multiplierFor(int index) {
+			Objective o = objectives.get(index);
+			switch (o.getType()) {
+			case PICKUP:
+				return 1.0;
+			case CAPTURE:
+				if (o.getControlPoint(world).isMainframe()) {
+					return 1.1;
+				} else {
+					return 1.2;
+				}
+			case SHOOT:
+				return 1.3;
+			default:
+				return 1.0;
+			}
+
+		}
+	}
+
 	static Integer[] assignOnePointToEach(Point[] points, UnitClient[] units, World world) {
+		return assignOnePointToEach(points, units, world, new MultiplierMap() { @Override public double multiplierFor(int index) {
+			return 1.0;
+		}});
+	}
+	static Integer[] assignOnePointToEach(Point[] points, UnitClient[] units, World world, MultiplierMap mm) {
 		Integer[][] wanted_points = new Integer[units.length][units.length]; // index 0 is closest, 1 is farther, etc.
 
 		for (int iunit = 0; iunit < units.length; ++iunit) {
 			UnitClient u = units[iunit];
-			final int distances[] = getPathingDistancesTo(u.getPosition(), points, world);
+			final double distances[] = getPathingDistancesTo(u.getPosition(), points, world, mm);
 
 			PriorityQueue<Integer> best_n = new PriorityQueue<Integer>(units.length, new Comparator<Integer>() {
 				@Override
@@ -361,6 +417,16 @@ public class PlayerAI {
 		return distances;
 	}
 
+	public static double[] getPathingDistancesTo(Point src, Point[] points, World world, MultiplierMap mm) {
+		double distances[] = new double[points.length];
+
+		for (int ipoint = 0; ipoint < points.length; ++ipoint) {
+			distances[ipoint] = getPathLengthWrapper(world, src, points[ipoint]) * mm.multiplierFor(ipoint);
+		}
+
+		return distances;
+	}
+
 	public static <U extends UnitClient> U findByCallsign(UnitCallSign cs, U[] units) {
 		for (int i = 0; i < units.length; ++i) {
 			if (units[i].getCallSign() == cs) {
@@ -371,12 +437,15 @@ public class PlayerAI {
 	}
 
 	public static <T extends Object> ArrayList<T> IndexesToObjects(Integer[] indexes, T[] objects) {
-		ArrayList<T> result = new ArrayList<>(objects.length);
+		return IndexesToObjects(indexes, new ArrayList<>(Arrays.asList(objects)));
+	}
+	public static <T extends Object> ArrayList<T> IndexesToObjects(Integer[] indexes, ArrayList<T> objects) {
+		ArrayList<T> result = new ArrayList<>(objects.size());
 		for (int i = 0; i < indexes.length; ++i) {
 			if (indexes[i] == null) {
 				result.add(null);
 			} else {
-				result.add(objects[indexes[i]]);
+				result.add(objects.get(indexes[i]));
 			}
 		}
 		return result;
@@ -463,6 +532,19 @@ public class PlayerAI {
 			}
 		}
 
+		public Point getLocationOfTarget(World w, EnemyUnit[] eunits) {
+			switch (type) {
+			case PICKUP:
+				return getPickup(w).getPosition();
+			case CAPTURE:
+				return getControlPoint(w).getPosition();
+			case SHOOT:
+				return getEnemy(eunits).getPosition();
+			case NONE:
+			default:
+				return null;
+			}
+		}
 
 		public Type getType() { return type; }
 
@@ -480,6 +562,14 @@ public class PlayerAI {
 		return result;
 	}
 
+	public static ArrayList<Objective> makeObjectivesFromControlPoints(ArrayList<ControlPoint> control_points) {
+		ArrayList<Objective> result = new ArrayList<Objective>(control_points.size());
+		for (int i = 0; i < control_points.size(); ++i) {
+			result.add(Objective.makeCaptureObjective(control_points.get(i)));
+		}
+		return result;
+	}
+
 	public static <U extends UnitClient> ArrayList<U> getAliveUnits(U[] units) {
 		ArrayList<U> result = new ArrayList<U>(units.length);
 		for (int i = 0; i < units.length; ++i) {
@@ -489,6 +579,50 @@ public class PlayerAI {
 		}
 
 		return result;
+	}
+
+	public static ControlPoint[] getCaptureFlags(ControlPoint[] control_points) {
+		ArrayList<ControlPoint> result = new ArrayList<>(control_points.length);
+		for (int i = 0; i < control_points.length; ++i) {
+			if (control_points[i].isMainframe() == false) {
+				result.add(control_points[i]);
+			}
+		}
+
+		return result.toArray(new ControlPoint[result.size()]);
+	}
+
+	public static ControlPoint[] getMainframes(ControlPoint[] control_points) {
+		ArrayList<ControlPoint> result = new ArrayList<>(control_points.length);
+		for (int i = 0; i < control_points.length; ++i) {
+			if (control_points[i].isMainframe() == true) {
+				result.add(control_points[i]);
+			}
+		}
+
+		return result.toArray(new ControlPoint[result.size()]);
+	}
+
+	public static ControlPoint[] getNeutralOrEnemyControlPoints(ControlPoint[] control_points, Team our_team) {
+		ArrayList<ControlPoint> result = new ArrayList<>(control_points.length);
+		for (int i = 0; i < control_points.length; ++i) {
+			if (control_points[i].getControllingTeam() != our_team) {
+				result.add(control_points[i]);
+			}
+		}
+
+		return result.toArray(new ControlPoint[result.size()]);
+	}
+
+	public static ControlPoint[] getOurControlPoints(ControlPoint[] control_points, Team our_team) {
+		ArrayList<ControlPoint> result = new ArrayList<>(control_points.length);
+		for (int i = 0; i < control_points.length; ++i) {
+			if (control_points[i].getControllingTeam() == our_team) {
+				result.add(control_points[i]);
+			}
+		}
+
+		return result.toArray(new ControlPoint[result.size()]);
 	}
 
 	private static class ObjectiveSet {
@@ -578,6 +712,16 @@ public class PlayerAI {
 			}
 		}
 		return found_none_objective;
+	}
+
+	private static ArrayList<Objective> ReplaceNullObjectivesWithNones(ArrayList<Objective> objectives) {
+		for (int i = 0; i < objectives.size(); ++i) {
+			Objective o = objectives.get(i);
+			if (o == null) {
+				objectives.set(i, Objective.makeDoNothingObjective());
+			}
+		}
+		return objectives;
 	}
 
 }
