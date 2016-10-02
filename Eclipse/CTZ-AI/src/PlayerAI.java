@@ -142,6 +142,33 @@ public class PlayerAI {
 			}
 		}
 
+		// handle trying to shoot someone, but your teammate is in the way.
+		for (FriendlyUnit me : friendly_units) {
+			final Objective my_o = turn_data.objectives.getObjective(me);
+			if (   my_o.getType() == PlayerAI.Objective.Type.SHOOT
+				&& turn_data.getActionType(me) == UnitAction.MOVE
+				&& findUnitAt(turn_data.getMovePoint(me), friendly_units) != null
+			) {
+				Point betterNextPoint = reRoute(me.getPosition(), my_o.getEnemy(enemy_units).getPosition(), world, new ShouldVisitPointTester() { @Override public boolean shouldVisitPoint(Point p) {
+					return findUnitAt(p, friendly_units) == null;
+				}});
+				if (betterNextPoint != null) {
+					setMeToMove(me, betterNextPoint, my_o, turn_data, world);
+				}
+			}
+		}
+
+		// handle trying to go nowhere with an enemy bot
+		for (FriendlyUnit me : friendly_units) {
+			if (true
+				&& last_turn_data.getActionType(me) == UnitAction.MOVE
+				&& last_turn_data.getActionType(me) == turn_data.getActionType(me)
+				&& last_turn_data.getMovePoint(me) == last_turn_data.getMovePoint(me)
+			) {
+				// not sure what to do
+			}
+		}
+
 		// TODO check here if shoot objective is same as last time, and we wanted to move, and we didn't move
 		// it's either a 2 bots trying to got the same square or a bot is in the way. Either case, renegotiate.
 
