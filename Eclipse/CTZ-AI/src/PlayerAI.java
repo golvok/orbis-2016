@@ -10,6 +10,7 @@ import com.orbischallenge.ctz.objects.FriendlyUnit;
 import com.orbischallenge.ctz.objects.Pickup;
 import com.orbischallenge.ctz.objects.UnitClient;
 import com.orbischallenge.ctz.objects.World;
+import com.orbischallenge.ctz.objects.enums.Direction;
 import com.orbischallenge.ctz.objects.enums.UnitCallSign;
 import com.orbischallenge.ctz.objects.enums.WeaponType;
 import com.orbischallenge.game.engine.Point;
@@ -49,19 +50,41 @@ public class PlayerAI {
 	 * @param friendlyUnits An array of all 4 units on your team. Their order won't change.
 	 */
     public void doMove(World world, EnemyUnit[] enemy_units, FriendlyUnit[] friendly_units) {
-		Integer[] pickup_indexes = assignOnePointToEach(getLocationsOf(world.getPickups()), friendly_units, world);
+    	Integer[] pickup_indexes = assignOnePointToEach(getLocationsOf(world.getPickups()), friendly_units, world);
 		for (int iunit = 0; iunit < friendly_units.length; ++iunit) {
 			FriendlyUnit me = friendly_units[iunit];
 			Integer pickup_index = pickup_indexes[iunit];
 			if (pickup_index == null) { continue; }
 
 			Pickup p = world.getPickups()[pickup_index];
-			if (p.getPosition().equals(me.getPosition())) {
+			
+			Point my_pos = me.getPosition();
+			
+			if (p.getPosition().equals(my_pos)) {
 				me.pickupItemAtPosition();
 			} else {
-				me.move(p.getPosition());
+				Point target = p.getPosition();
+				Direction direction = world.getNextDirectionInPath(my_pos, target);
+				
+				Point next_point = direction.movePoint(my_pos);
+				
+				if (getSquareSafety(next_point, enemy_units, world) <= DANGER_VAL) {
+					me.move(next_point);
+				}
 			}
 		}
+
+    	/* if (ATTACK_MODE) */ {
+			for (FriendlyUnit friendly : friendly_units) {
+				for (EnemyUnit enemy : enemy_units) {
+					boolean can_shoot = world.canShooterShootTarget(friendly.getPosition(), enemy.getPosition(), friendly.getCurrentWeapon().getRange());
+					
+					if (can_shoot) {
+						friendly.shootAt(enemy);
+					}
+				}
+			}
+    	}
     }
 
     // Return a safety value of the provided square/point
