@@ -1,5 +1,7 @@
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.PriorityQueue;
 
 import com.orbischallenge.ctz.objects.ControlPoint;
 import com.orbischallenge.ctz.Constants;
@@ -13,9 +15,9 @@ import com.orbischallenge.ctz.objects.enums.WeaponType;
 import com.orbischallenge.game.engine.Point;
 
 public class PlayerAI {
-	
+
 	private static class Objective {
-		
+
 		public Objective(Type t, Point p) {
 			type = t;
 			location = p;
@@ -24,7 +26,7 @@ public class PlayerAI {
 		enum Type {
 			PICKUP, CAPTURE, SHOOT;
 		}
-		
+
 		Type type;
 		Point location;
 		UnitCallSign target;
@@ -61,7 +63,7 @@ public class PlayerAI {
 			}
 		}
     }
-    
+
     // Return a safety value of the provided square/point
     // Lower the value the better.
     // Lowest value returned is 0.0 -> Safe
@@ -69,15 +71,15 @@ public class PlayerAI {
     // DANGER_VAL returned -> Currently in enemy's line of sight
     static double getSquareSafety(Point point, EnemyUnit[] enemyUnits, World world) {
     	double safety = 0.0;
-    	
+
     	for (EnemyUnit unit : enemyUnits) {
     		WeaponType weapon = unit.getCurrentWeapon();
     		int range = weapon.getRange();
-			
+
 			Point position = unit.getPosition();
-			
+
 			boolean in_range = world.canShooterShootTarget(position, point, range);
-			
+
 			if (in_range) {
 				safety = Math.max(safety, DANGER_VAL);
 				break;
@@ -86,7 +88,7 @@ public class PlayerAI {
     			if (safety < CAUTION_VAL) {
 	        		int x = position.getX();
 	        		int y = position.getY();
-	
+
 	        		boolean can_be_dangerous_next_turn = false;
 	        		if (world.canShooterShootTarget(new Point(x-1, y-1), point, range)) {
 	        			can_be_dangerous_next_turn = true;
@@ -112,82 +114,99 @@ public class PlayerAI {
 	        		else if (world.canShooterShootTarget(new Point(x, y-1), point, range)) {
 	        			can_be_dangerous_next_turn = true;
 	        		}
-	
-	        		
+
+
 	        		if (can_be_dangerous_next_turn) {
 	        			safety = Math.max(safety, CAUTION_VAL);
 	        		}
     			}
     		}
     	}
-    	
+
     	return safety;
     }
-    
+
     static boolean hasGoodWeapon(UnitClient unit) {
     	return unit.getCurrentWeapon() != WeaponType.MINI_BLASTER;
     }
-    
+
     static Integer[] assignOnePointToEach(Point[] points, UnitClient[] units, World world) {
-    	Integer[][] pickup_targets = new Integer[MAX_NUM_TEAM_MEMBERS][2]; // index 0 is primary, 1 is secondary
+    	Integer[][] wanted_points = new Integer[units.length][units.length]; // index 0 is closest, 1 is farther, etc.
 
 		for (int iunit = 0; iunit < units.length; ++iunit) {
 			UnitClient u = units[iunit];
-			int closest_len = Integer.MAX_VALUE;	
-			int second_closest_len = Integer.MAX_VALUE;
+			final int distances[] = getPathingDistancesTo(u.getPosition(), points, world);
 
-			for (int ipoint = 0; ipoint < points.length; ++ipoint) {
-				int len = world.getPathLength(u.getPosition(), points[ipoint]);
-				if (closest_len > len) {
-					second_closest_len = closest_len;
-					pickup_targets[iunit][1] = pickup_targets[iunit][0];
-					closest_len = len;
-					pickup_targets[iunit][0] = ipoint;
-				} else {
-					if (second_closest_len > len) {
-						second_closest_len = len;
-						pickup_targets[iunit][1] = ipoint;
+			PriorityQueue<Integer> best_n = new PriorityQueue<Integer>(new Comparator<Integer>() {
+				@Override
+				public int compare(Integer o1, Integer o2) {
+					if (distances[o1] == distances[o2]) {
+						return 0;
+					} else {
+						if (distances[o1] < distances[o2]) {
+							return 1;
+						} else {
+							return -1;
+						}
 					}
 				}
+			});
+
+			for (int ipoint = 0; ipoint < points.length; ++ipoint) {
+				best_n.add(ipoint);
+				if (best_n.size() > units.length) {
+					best_n.poll();
+				}
 			}
-		}
-		
-		
-		HashMap<Integer,Integer> num_want_primary = new HashMap<>();
-		for (int i = 0; i < pickup_targets.length; ++i) {
-			Integer this_pickup = pickup_targets[i][0];
-			Integer old_value = num_want_primary.get(this_pickup);
-			if (old_value == null) {
-				old_value = 0;
+
+			for (int i = 0; i < units.length; ++i) {
+				wanted_points[iunit][units.length-i-1] = best_n.poll();
 			}
-			num_want_primary.put(this_pickup, old_value + 1);
 		}
 
-		Integer[] final_targets = new Integer[MAX_NUM_TEAM_MEMBERS];
-		HashSet<Point> used = new HashSet<>();
-		for (int iunit = 0; iunit < units.length; ++iunit) {
-			Integer my_primary = pickup_targets[iunit][0];
-			int num_want_my_primary = num_want_primary.get(my_primary);
-			if (num_want_my_primary == 1) {
-				final_targets[iunit] = my_primary;
-			} else {
-				final_targets[iunit] = null;
+
+		int lowest_total_distance = Integer.MAX_VALUE;
+		int best_index = 0;
+
+		for (int comb_index = 0; comb_index < units.length*units.length; ++comb_index) {
+
+			boolean in_use[] = new boolean[points.length];
+			boolean use_conflict = false;
+			int total_distance = 0;
+			for (int iunit = 0, mod = units.length; iunit < units.length; ++iunit, mod*=units.length) {
+				int point_index = wanted_points[iunit][comb_index%mod];
+
+				// check for use conflict
+				if (in_use[point_index]) {
+					use_conflict = true;
+					break;
+				} else {
+					in_use[point_index] = true;
+				}
+
+				// add to total
+				total_distance += world.getPathLength(units[iunit].getPosition(), points[point_index]);
+			}
+			if (use_conflict) {
+				break;
+			}
+
+			if (total_distance < lowest_total_distance) {
+				lowest_total_distance = total_distance;
+				best_index = comb_index;
 			}
 		}
-		
-		for (int iunit = 0; iunit < units.length; ++iunit) {
-			if (final_targets[iunit] != null) { continue; } // skip those with targets already
-			Integer my_secondary = pickup_targets[iunit][1];
-			if (used.contains(my_secondary)) {
-				final_targets[iunit] = null;
-			} else {
-				final_targets[iunit] = my_secondary;
-			}
+
+		// put comb at best_comb_index in final_targets
+		Integer[] final_targets = new Integer[units.length];
+		for (int iunit = 0, mod = units.length; iunit < units.length; ++iunit, mod*=units.length) {
+			int point_index = wanted_points[iunit][best_index%mod];
+			final_targets[iunit] = point_index;
 		}
 
 		return final_targets;
     }
-    
+
     public static Point[] getLocationsOf(Pickup[] pickups) {
     	Point[] result = new Point[pickups.length];
     	for (int i = 0; i < pickups.length; ++i) {
@@ -195,12 +214,22 @@ public class PlayerAI {
     	}
     	return result;
     }
-    
+
     public static Point[] getLocationsOf(ControlPoint[] cpoints) {
     	Point[] result = new Point[cpoints.length];
     	for (int i = 0; i < cpoints.length; ++i) {
     		result[i] = cpoints[i].getPosition();
     	}
     	return result;
+    }
+
+    public static int[] getPathingDistancesTo(Point src, Point[] points, World world) {
+		int distances[] = new int[points.length];
+
+		for (int ipoint = 0; ipoint < points.length; ++ipoint) {
+			distances[ipoint] = world.getPathLength(src, points[ipoint]);
+		}
+
+		return distances;
     }
 }
