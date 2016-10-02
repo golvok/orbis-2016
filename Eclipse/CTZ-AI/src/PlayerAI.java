@@ -1,3 +1,4 @@
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -49,14 +50,17 @@ public class PlayerAI {
 	 * @param enemyUnits An array of all 4 units on the enemy team. Their order won't change.
 	 * @param friendlyUnits An array of all 4 units on your team. Their order won't change.
 	 */
-    public void doMove(World world, EnemyUnit[] enemy_units, FriendlyUnit[] friendly_units) {
+    public void doMove(World world, EnemyUnit[] may_be_dead_enemy_units, FriendlyUnit[] may_be_dead_friendly_units) {
+		final Pickup[] all_pickups = world.getPickups();
+		final FriendlyUnit[] friendly_units = getAliveUnits(may_be_dead_friendly_units).toArray(new FriendlyUnit[0]);
+		final EnemyUnit[] enemy_units = getAliveUnits(may_be_dead_enemy_units).toArray(new EnemyUnit[0]);
     	Integer[] pickup_indexes = assignOnePointToEach(getLocationsOf(world.getPickups()), friendly_units, world);
 		for (int iunit = 0; iunit < friendly_units.length; ++iunit) {
 			FriendlyUnit me = friendly_units[iunit];
 			Integer pickup_index = pickup_indexes[iunit];
 			if (pickup_index == null) { continue; }
 
-			Pickup p = world.getPickups()[pickup_index];
+			Pickup p = all_pickups[pickup_index];
 			
 			Point my_pos = me.getPosition();
 			
@@ -264,4 +268,15 @@ public class PlayerAI {
 
 		return distances;
     }
+
+	public static <U extends UnitClient> ArrayList<U> getAliveUnits(U[] units) {
+		ArrayList<U> result = new ArrayList<U>(units.length);
+		for (int i = 0; i < units.length; ++i) {
+			if (units[i].getHealth() > 0) {
+				result.add(units[i]);
+			}
+		}
+
+		return result;
+	}
 }
