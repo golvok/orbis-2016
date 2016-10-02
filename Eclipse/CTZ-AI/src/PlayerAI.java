@@ -20,95 +20,6 @@ import com.orbischallenge.game.engine.Point;
 
 public class PlayerAI {
 
-	private static class Objective {
-
-		public static Objective makePickupObjective(Pickup p) {
-			if (p == null) {
-				return makeDoNothingObjective();
-			} else {
-				return new Objective(Type.PICKUP, p.getPosition(), UnitCallSign.ALPHA);
-			}
-		}
-
-		public static Objective makeCaptureObjective(ControlPoint cp) {
-			if (cp == null) {
-				return makeDoNothingObjective();
-			} else {
-				return new Objective(Type.CAPTURE, cp.getPosition(), UnitCallSign.ALPHA);
-			}
-		}
-
-		public static Objective makeShootObjective(EnemyUnit eu) {
-			if (eu == null) {
-				return makeDoNothingObjective();
-			} else {
-				return new Objective(Type.SHOOT, new Point(-1,-1), eu.getCallSign());
-			}
-		}
-
-		public static Objective makeDoNothingObjective() {
-			return new Objective(Type.NONE, new Point(-1,-1), UnitCallSign.ALPHA);
-		}
-
-		private Objective(Type t, Point p, UnitCallSign cs) {
-			type = t;
-			location = p;
-			target_call_sign = cs;
-		}
-
-		enum Type {
-			PICKUP, CAPTURE, SHOOT, NONE;
-		}
-
-		final private Type type;
-		final private Point location;
-		final private UnitCallSign target_call_sign;
-
-		public boolean isDoable(UnitClient me, World world, EnemyUnit[] e_units) {
-			switch(type) {
-				case PICKUP:
-					return world.getPickupAtPosition(location) != null;
-				case CAPTURE:
-					return world.getNearestControlPoint(location).getControllingTeam() == me.getTeam();
-				case SHOOT:
-					return findByCallsign(target_call_sign, e_units) != null;
-				default:
-					return false;
-			}
-		}
-
-		public Pickup getPickup(World w) {
-			if (type == Type.PICKUP) {
-				return w.getPickupAtPosition(location);
-			} else {
-				return null; // assert?
-			}
-		}
-
-		public ControlPoint getControlPoint(World w) {
-			if (type == Type.CAPTURE) {
-				return w.getNearestControlPoint(location);
-			} else {
-				return null; // assert?
-			}
-		}
-
-		public EnemyUnit getEnemy(EnemyUnit[] eunits) {
-			if (type == Type.SHOOT) {
-				return findByCallsign(target_call_sign, eunits);
-			} else {
-				return null; // assert?
-			}
-		}
-
-		public Type getType() { return type; }
-
-		public boolean isNone() {
-			return getType() == Type.NONE;
-		}
-
-	}
-
 	final static boolean DEBUG_PRINTS = true;
 
 	final static double DANGER_VAL = 10.0;
@@ -469,6 +380,96 @@ public class PlayerAI {
 			}
 		}
 		return result;
+	}
+
+	private static class Objective {
+
+		public static Objective makePickupObjective(Pickup p) {
+			if (p == null) {
+				return makeDoNothingObjective();
+			} else {
+				return new Objective(Type.PICKUP, p.getPosition(), UnitCallSign.ALPHA);
+			}
+		}
+
+		public static Objective makeCaptureObjective(ControlPoint cp) {
+			if (cp == null) {
+				return makeDoNothingObjective();
+			} else {
+				return new Objective(Type.CAPTURE, cp.getPosition(), UnitCallSign.ALPHA);
+			}
+		}
+
+		public static Objective makeShootObjective(EnemyUnit eu) {
+			if (eu == null) {
+				return makeDoNothingObjective();
+			} else {
+				return new Objective(Type.SHOOT, new Point(-1,-1), eu.getCallSign());
+			}
+		}
+
+		public static Objective makeDoNothingObjective() {
+			return new Objective(Type.NONE, new Point(-1,-1), UnitCallSign.ALPHA);
+		}
+
+		private Objective(Type t, Point p, UnitCallSign cs) {
+			type = t;
+			location = p;
+			target_call_sign = cs;
+		}
+
+		enum Type {
+			PICKUP, CAPTURE, SHOOT, NONE;
+		}
+
+		final private Type type;
+		final private Point location;
+		final private UnitCallSign target_call_sign;
+
+		public boolean isDoable(UnitClient me, World world, EnemyUnit[] e_units) {
+			switch(type) {
+				case PICKUP:
+					return world.getPickupAtPosition(location) != null;
+				case CAPTURE:
+					return world.getNearestControlPoint(location).getControllingTeam() == me.getTeam();
+				case SHOOT:
+					return findByCallsign(target_call_sign, e_units) != null;
+				default:
+					return false;
+			}
+		}
+
+		public Pickup getPickup(World w) {
+			if (type == Type.PICKUP) {
+				return w.getPickupAtPosition(location);
+			} else {
+				return null; // assert?
+			}
+		}
+
+		public ControlPoint getControlPoint(World w) {
+			if (type == Type.CAPTURE) {
+				return w.getNearestControlPoint(location);
+			} else {
+				return null; // assert?
+			}
+		}
+
+		public EnemyUnit getEnemy(EnemyUnit[] eunits) {
+			if (type == Type.SHOOT) {
+				return findByCallsign(target_call_sign, eunits);
+			} else {
+				return null; // assert?
+			}
+		}
+
+
+		public Type getType() { return type; }
+
+		public boolean isNone() {
+			return getType() == Type.NONE;
+		}
+
 	}
 
 	public static ArrayList<Objective> makeObjectivesFromPickups(ArrayList<Pickup> pickups) {
