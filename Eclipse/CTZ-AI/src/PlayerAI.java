@@ -168,13 +168,21 @@ public class PlayerAI {
 		int lowest_total_distance = Integer.MAX_VALUE;
 		int best_index = 0;
 
-		for (int comb_index = 0; comb_index < units.length*units.length; ++comb_index) {
+		int comb_index_limit = 1;
+		for (int i = 0; i < units.length; ++i) {
+			comb_index_limit *= units.length;
+		}
+		for (int comb_index = 0; comb_index < comb_index_limit; ++comb_index) {
 
 			boolean in_use[] = new boolean[points.length];
+			int num_nopickups = 0;
 			boolean use_conflict = false;
 			int total_distance = 0;
 			for (int iunit = 0, mod = units.length; iunit < units.length; ++iunit, mod*=units.length) {
-				int point_index = wanted_points[iunit][comb_index%mod];
+				int sub_index = (comb_index%mod)/(mod/units.length);
+				Integer point_index = wanted_points[iunit][sub_index];
+				// if one is null, then assume it's not there, and count it;
+				if (point_index == null) { ++num_nopickups; continue; }
 
 				// check for use conflict
 				if (in_use[point_index]) {
@@ -187,8 +195,8 @@ public class PlayerAI {
 				// add to total
 				total_distance += world.getPathLength(units[iunit].getPosition(), points[point_index]);
 			}
-			if (use_conflict) {
-				break;
+			if (use_conflict || num_nopickups > (units.length - points.length)) {
+				continue;
 			}
 
 			if (total_distance < lowest_total_distance) {
@@ -200,7 +208,8 @@ public class PlayerAI {
 		// put comb at best_comb_index in final_targets
 		Integer[] final_targets = new Integer[units.length];
 		for (int iunit = 0, mod = units.length; iunit < units.length; ++iunit, mod*=units.length) {
-			int point_index = wanted_points[iunit][best_index%mod];
+			int sub_index = (best_index%mod)/(mod/units.length);
+			Integer point_index = wanted_points[iunit][sub_index];
 			final_targets[iunit] = point_index;
 		}
 
