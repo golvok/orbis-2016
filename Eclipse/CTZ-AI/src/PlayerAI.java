@@ -137,7 +137,7 @@ public class PlayerAI {
 			UnitClient u = units[iunit];
 			final int distances[] = getPathingDistancesTo(u.getPosition(), points, world);
 
-			PriorityQueue<Integer> best_n = new PriorityQueue<Integer>(new Comparator<Integer>() {
+			PriorityQueue<Integer> best_n = new PriorityQueue<Integer>(units.length, new Comparator<Integer>() {
 				@Override
 				public int compare(Integer o1, Integer o2) {
 					if (distances[o1] == distances[o2]) {
