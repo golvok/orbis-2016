@@ -67,7 +67,7 @@ public class PlayerAI {
 
 		final ArrayList<Objective> non_combative_objectives = new ArrayList<>(not_our_capture_flags.length + not_our_mainframes.length + all_pickups.length);
 		non_combative_objectives.addAll(makeObjectivesFromControlPoints(new ArrayList<ControlPoint>(Arrays.asList(not_our_capture_flags))));
-		non_combative_objectives.addAll(makeObjectivesFromControlPoints(new ArrayList<ControlPoint>(Arrays.asList(not_our_capture_flags))));
+		non_combative_objectives.addAll(makeObjectivesFromControlPoints(new ArrayList<ControlPoint>(Arrays.asList(not_our_mainframes))));
 		non_combative_objectives.addAll(makeObjectivesFromPickups(new ArrayList<Pickup>(Arrays.asList(all_pickups))));
 
 		Point[] cp_mf_and_pu_points = new Point[non_combative_objectives.size()];
