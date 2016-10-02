@@ -12,6 +12,7 @@ import com.orbischallenge.ctz.objects.Pickup;
 import com.orbischallenge.ctz.objects.UnitClient;
 import com.orbischallenge.ctz.objects.World;
 import com.orbischallenge.ctz.objects.enums.Direction;
+import com.orbischallenge.ctz.objects.enums.Team;
 import com.orbischallenge.ctz.objects.enums.UnitCallSign;
 import com.orbischallenge.ctz.objects.enums.WeaponType;
 import com.orbischallenge.game.engine.Point;
@@ -20,18 +21,87 @@ public class PlayerAI {
 
 	private static class Objective {
 
-		public Objective(Type t, Point p) {
+		public static Objective makePickupObjective(Pickup p) {
+			if (p == null) {
+				return makeDoNothingObjective();
+			} else {
+				return new Objective(Type.PICKUP, p.getPosition(), UnitCallSign.ALPHA);
+			}
+		}
+
+		public static Objective makeCaptureObjective(ControlPoint cp) {
+			if (cp == null) {
+				return makeDoNothingObjective();
+			} else {
+				return new Objective(Type.CAPTURE, cp.getPosition(), UnitCallSign.ALPHA);
+			}
+		}
+
+		public static Objective makeShootObjective(EnemyUnit eu) {
+			if (eu == null) {
+				return makeDoNothingObjective();
+			} else {
+				return new Objective(Type.SHOOT, new Point(-1,-1), eu.getCallSign());
+			}
+		}
+
+		public static Objective makeDoNothingObjective() {
+			return new Objective(Type.NONE, new Point(-1,-1), UnitCallSign.ALPHA);
+		}
+
+		private Objective(Type t, Point p, UnitCallSign cs) {
 			type = t;
 			location = p;
+			target_call_sign = cs;
 		}
 
 		enum Type {
-			PICKUP, CAPTURE, SHOOT;
+			PICKUP, CAPTURE, SHOOT, NONE;
 		}
 
-		Type type;
-		Point location;
-		UnitCallSign target;
+		final private Type type;
+		final private Point location;
+		final private UnitCallSign target_call_sign;
+
+		public boolean isDoable(UnitClient me, World world, EnemyUnit[] e_units) {
+			switch(type) {
+				case PICKUP:
+					return world.getPickupAtPosition(location) != null;
+				case CAPTURE:
+					return world.getNearestControlPoint(location).getControllingTeam() == me.getTeam();
+				case SHOOT:
+					return findByCallsign(target_call_sign, e_units) != null;
+				default:
+					return false;
+			}
+		}
+
+		public Pickup getPickup(World w) {
+			if (type == Type.PICKUP) {
+				return w.getPickupAtPosition(location);
+			} else {
+				return null; // assert?
+			}
+		}
+
+		public ControlPoint getControlPoint(World w) {
+			if (type == Type.CAPTURE) {
+				return w.getNearestControlPoint(location);
+			} else {
+				return null; // assert?
+			}
+		}
+
+		public EnemyUnit getEnemy(EnemyUnit[] eunits) {
+			if (type == Type.SHOOT) {
+				return findByCallsign(target_call_sign, eunits);
+			} else {
+				return null; // assert?
+			}
+		}
+
+		public Type getType() { return type; }
+
 	}
 
 	final static double DANGER_VAL = 10.0;
@@ -54,30 +124,37 @@ public class PlayerAI {
 		final Pickup[] all_pickups = world.getPickups();
 		final FriendlyUnit[] friendly_units = getAliveUnits(may_be_dead_friendly_units).toArray(new FriendlyUnit[0]);
 		final EnemyUnit[] enemy_units = getAliveUnits(may_be_dead_enemy_units).toArray(new EnemyUnit[0]);
-    	Integer[] pickup_indexes = assignOnePointToEach(getLocationsOf(world.getPickups()), friendly_units, world);
+
+		ArrayList<Objective> pickup_objectives = makeObjectivesFromPickups(IndexesToObjects(
+			assignOnePointToEach(
+				getLocationsOf(all_pickups), friendly_units, world
+			),
+		all_pickups));
+
 		for (int iunit = 0; iunit < friendly_units.length; ++iunit) {
 			FriendlyUnit me = friendly_units[iunit];
-			Integer pickup_index = pickup_indexes[iunit];
-			if (pickup_index == null) { continue; }
+			Objective pickup_objective = pickup_objectives.get(iunit);
+			if (pickup_objective.getType() == Objective.Type.NONE) {
+				continue;
+			}
+			Pickup p = pickup_objective.getPickup(world);
 
-			Pickup p = all_pickups[pickup_index];
-			
 			Point my_pos = me.getPosition();
-			
+
 			if (p.getPosition().equals(my_pos)) {
 				me.pickupItemAtPosition();
 			} else {
 				Point target = p.getPosition();
 				Direction direction = world.getNextDirectionInPath(my_pos, target);
-				
+
 				Point next_point = direction.movePoint(my_pos);
-				
+
 				if (getSquareSafety(next_point, enemy_units, world) <= CAUTION_VAL) {
 					me.move(next_point);
 				}
 				else {
 					Point rerouted_point = reRoute(my_pos, target, enemy_units, world);
-					
+
 					if (rerouted_point != null) {
 						me.move(rerouted_point);
 					}
@@ -89,7 +166,7 @@ public class PlayerAI {
 			for (FriendlyUnit friendly : friendly_units) {
 				for (EnemyUnit enemy : enemy_units) {
 					boolean can_shoot = world.canShooterShootTarget(friendly.getPosition(), enemy.getPosition(), friendly.getCurrentWeapon().getRange());
-					
+
 					if (can_shoot) {
 						friendly.shootAt(enemy);
 					}
@@ -121,7 +198,7 @@ public class PlayerAI {
     		else {
     			if (safety < CAUTION_VAL) {
 	        		Point[] adjacent_points = getAdjacentPoints(position);
-	        		
+
 	        		for (Point p : adjacent_points) {
 	        			if (world.canShooterShootTarget(p, point, range)) {
 	        				// Can be dangerous next turn
@@ -135,18 +212,18 @@ public class PlayerAI {
 
     	return safety;
     }
-    
+
     // Return a safe next move (Point to move to) to advance from src towards dst
     // Return null if there is not safe next move or the best safe move is to standby or move away from the dst
     static Point reRoute(Point src, Point dst, EnemyUnit[] enemy_units, World world) {
 		Direction direction = world.getNextDirectionInPath(src, dst);
 		Point next_point = direction.movePoint(src);
-		
+
 		int current_distance = getPathLengthWrapper(world, src, dst);
 		int optimal_distance = getPathLengthWrapper(world, next_point, dst);
-		
+
 		Point[] adjacent_points = getAdjacentPoints(src);
-		
+
 		int min_distance = current_distance;
 		Point rerouted_point = null;
 		for (Point p : adjacent_points) {
@@ -155,21 +232,21 @@ public class PlayerAI {
 				if (distance < min_distance) {
 					min_distance = distance;
 					rerouted_point = p;
-					
+
 					if (distance == optimal_distance) {
 						break;
 					}
 				}
 			}
 		}
-		
+
 		return rerouted_point;
     }
-    
+
     static Point[] getAdjacentPoints(Point point) {
     	int x = point.getX();
     	int y = point.getY();
-    	
+
     	Point[] adjacent_points = new Point[8];
 
     	adjacent_points[0] = new Point(x-1, y-1);
@@ -180,21 +257,21 @@ public class PlayerAI {
     	adjacent_points[5] = new Point(x+1, y);
     	adjacent_points[6] = new Point(x+1, y-1);
     	adjacent_points[7] = new Point(x, y-1);
-    	
+
     	return adjacent_points;
     }
-    
+
     static int getPathLengthWrapper(World world, Point start, Point end) {
     	if (start.equals(end)) {
     		return 0;
     	}
-    	
+
     	int distance = world.getPathLength(start, end);
-    	
+
     	if (distance == 0) { // world.getPathLength returns 0 is path doesn't exist
     		distance = Integer.MAX_VALUE;
     	}
-    	
+
     	return distance;
     }
 
@@ -313,6 +390,35 @@ public class PlayerAI {
 
 		return distances;
     }
+
+	public static <U extends UnitClient> U findByCallsign(UnitCallSign cs, U[] units) {
+		for (int i = 0; i < units.length; ++i) {
+			if (units[i].getCallSign() == cs) {
+				return units[i];
+			}
+		}
+		return null;
+	}
+
+	public static <T extends Object> ArrayList<T> IndexesToObjects(Integer[] indexes, T[] objects) {
+		ArrayList<T> result = new ArrayList<>(objects.length);
+		for (int i = 0; i < indexes.length; ++i) {
+			if (indexes[i] == null) {
+				result.add(null);
+			} else {
+				result.add(objects[indexes[i]]);
+			}
+		}
+		return result;
+	}
+
+	public static ArrayList<Objective> makeObjectivesFromPickups(ArrayList<Pickup> pickups) {
+		ArrayList<Objective> result = new ArrayList<Objective>(pickups.size());
+		for (int i = 0; i < pickups.size(); ++i) {
+			result.add(Objective.makePickupObjective(pickups.get(i)));
+		}
+		return result;
+	}
 
 	public static <U extends UnitClient> ArrayList<U> getAliveUnits(U[] units) {
 		ArrayList<U> result = new ArrayList<U>(units.length);
